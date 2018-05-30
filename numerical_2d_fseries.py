@@ -14,6 +14,7 @@ import f90nml
 NX = 100
 NY = 100
 
+
 def read_fortran_bin(fname):
     ff = FortranFile(fname)
     data = []
@@ -36,6 +37,7 @@ def calc_domain_details(X, Y):
     Lx = X[0, -1] - X[0, 0]
     Ly = Y[-1, 0] - Y[0, 0]
     return dx, dy, dA, Lx, Ly
+
 
 def calc_2d_fs(X, Y, sig, N):
     """Calculates 2D Fourier series to N terms over domain defined by X, Y
@@ -211,6 +213,7 @@ def run_fortran(signame, N):
     print(f'ran in {end - start}')
     return X, Y, sig, alpha, beta, gamma, delta, sig_fs
 
+
 if __name__ == '__main__':
     if len(sys.argv) != 4:
         print('Usage: python {} <runtype> <signame> <n_terms>'.format(sys.argv[0]))
@@ -241,6 +244,7 @@ if __name__ == '__main__':
     elif runtype == 'compare':
         X, Y, sig, alpha, beta, gamma, delta, sig_fs = run_python(signame, N)
         X, Y, sig, alpha2, beta2, gamma2, delta2, sig_fs2 = run_fortran(signame, N)
+
         print(f'rmse sig_fs: {rmse(sig_fs, sig_fs2)}')
         print(f'rmse alpha: {rmse(alpha, alpha2)}')
         print(f'rmse beta: {rmse(beta, beta2)}')
