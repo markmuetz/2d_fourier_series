@@ -5,6 +5,7 @@ import sys
 
 import numpy as np
 import pylab as plt
+from scipy.io import FortranFile
 
 NX = 100
 NY = 100
@@ -14,63 +15,60 @@ def rmse(a1, a2):
     return np.sqrt(np.sum((a1 - a2)**2) / a1.size)
 
 
+def calc_domain_details(X, Y):
+    dx = X[0, 1] - X[0, 0]
+    dy = Y[1, 0] - Y[0, 0]
+    dA = dx * dy
+    Lx = X[0, -1] - X[0, 0]
+    Ly = Y[-1, 0] - Y[0, 0]
+    return dx, dy, dA, Lx, Ly
+
 def calc_2d_fs(X, Y, sig, N):
     """Calculates 2D Fourier series to N terms over domain defined by X, Y
 
     Uses sines/cosines, and takes calculations from here:
     https://math.stackexchange.com/a/1695296/109131
     """
-    dx = X[0, 1] - X[0, 0]
-    dy = Y[1, 0] - Y[0, 0]
-    dA = dx * dy
-    Lx = X[0, -1] - X[0, 0]
-    Ly = Y[-1, 0] - Y[0, 0]
-
-    # N.B. closures over X/Y/Lx/Ly for convenience. i.e. they know about domain size.
-    def sx(n):
-        return np.sin(2 * np.pi * n * X / Lx)
-    def sy(n):
-        return np.sin(2 * np.pi * n * Y / Ly)
-    def cx(n):
-        return np.cos(2 * np.pi * n * X / Lx)
-    def cy(n):
-        return np.cos(2 * np.pi * n * Y / Ly)
+    dx, dy, dA, Lx, Ly = calc_domain_details(X, Y)
 
     alpha = np.zeros((N, N))
     beta = np.zeros((N, N))
     gamma = np.zeros((N, N))
     delta = np.zeros((N, N))
 
+    sig_fs = np.zeros_like(sig)
+
     # Calculate components:
+    # Calculate Fourier Series:
     for i in range(N):
-        print('comp: {}/{}'.format(i + 1, N))
+        print('{}/{}'.format(i + 1, N))
         for j in range(N):
+
+            snx = np.sin(2 * np.pi * i * X / Lx)
+            sny = np.sin(2 * np.pi * i * Y / Ly)
+            cnx = np.cos(2 * np.pi * j * X / Lx)
+            cny = np.cos(2 * np.pi * j * Y / Ly)
+
             if i == 0 and j == 0:
                 kappa = 1
             elif i == 0 or j == 0:
                 kappa = 2
             else:
                 kappa = 4
-            alpha[i, j] = kappa * (sig * cx(i) * cy(j)).sum() * dA / (Lx * Ly)
-            beta[i, j] = kappa * (sig * cx(i) * sy(j)).sum() * dA / (Lx * Ly)
-            gamma[i, j] = kappa * (sig * sx(i) * cy(j)).sum() * dA / (Lx * Ly)
-            delta[i, j] = kappa * (sig * sx(i) * sy(j)).sum() * dA / (Lx * Ly)
-            
-    sig_fs = np.zeros_like(sig)
+            alpha[i, j] = kappa * (sig * cnx * cny).sum() * dA / (Lx * Ly)
+            beta[i, j]  = kappa * (sig * cnx * sny).sum() * dA / (Lx * Ly)
+            gamma[i, j] = kappa * (sig * snx * cny).sum() * dA / (Lx * Ly)
+            delta[i, j] = kappa * (sig * snx * sny).sum() * dA / (Lx * Ly)
 
-    # Calculate Fourier Series:
-    for i in range(N):
-        print('fs: {}/{}'.format(i + 1, N))
-        for j in range(N):
-            sig_fs += (alpha[i, j] * cx(i) * cy(j) +
-                       beta[i, j] * cx(i) * sy(j) + 
-                       gamma[i, j] * sx(i) * cy(j) + 
-                       delta[i, j] * sx(i) * sy(j))
+            sig_fs += (alpha[i, j] * cnx * cny +
+                       beta[i, j]  * cnx * sny + 
+                       gamma[i, j] * snx * cny + 
+                       delta[i, j] * snx * sny)
 
     return alpha, beta, gamma, delta, sig_fs
                        
 
-def plot_results(signame, X, Y, sig, sig_fs, N, alpha, beta, gamma, delta):
+def plot_results(signame, X, Y, sig, sig_fs, N, alpha=None, beta=None, gamma=None, delta=None):
     extent = (np.min(X), np.max(X), np.min(Y), np.max(Y))
     plt.figure(1)
     plt.clf()
@@ -93,38 +91,37 @@ def plot_results(signame, X, Y, sig, sig_fs, N, alpha, beta, gamma, delta):
     plt.colorbar()
     plt.pause(0.001)
 
-    plt.figure(4)
-    plt.clf()
-    f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, sharex='col', sharey='row', num=4)
-    # f.set_title('compontents')
 
-    min_all = min(map(np.min, [alpha, beta, gamma, delta]))
-    max_all = max(map(np.max, [alpha, beta, gamma, delta]))
+    if alpha is not None:
+        plt.figure(4)
+        plt.clf()
+        f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, sharex='col', sharey='row', num=4)
+        # f.set_title('compontents')
+        min_all = min(map(np.min, [alpha, beta, gamma, delta]))
+        max_all = max(map(np.max, [alpha, beta, gamma, delta]))
 
-    ax1.set_title('$\\alpha$ [cos(nx).cos(my)]')
-    ax1.imshow(alpha, vmin=min_all, vmax=max_all, interpolation='nearest')
+        ax1.set_title('$\\alpha$ [cos(nx).cos(my)]')
+        ax1.imshow(alpha, vmin=min_all, vmax=max_all, interpolation='nearest')
 
-    ax2.set_title('$\\beta$ [cos(nx).sin(my)]')
-    ax2.imshow(beta, vmin=min_all, vmax=max_all, interpolation='nearest')
+        ax2.set_title('$\\beta$ [cos(nx).sin(my)]')
+        ax2.imshow(beta, vmin=min_all, vmax=max_all, interpolation='nearest')
 
-    ax3.set_title('$\\gamma$ [cos(nx).sin(my)]')
-    ax3.imshow(gamma, vmin=min_all, vmax=max_all, interpolation='nearest')
+        ax3.set_title('$\\gamma$ [cos(nx).sin(my)]')
+        ax3.imshow(gamma, vmin=min_all, vmax=max_all, interpolation='nearest')
 
-    ax4.set_title('$\\delta$ [sin(nx).sin(my)]')
-    im = ax4.imshow(delta, vmin=min_all, vmax=max_all, interpolation='nearest')
+        ax4.set_title('$\\delta$ [sin(nx).sin(my)]')
+        im = ax4.imshow(delta, vmin=min_all, vmax=max_all, interpolation='nearest')
 
-    f.subplots_adjust(right=0.8)
-    cbar_ax = f.add_axes([0.85, 0.15, 0.05, 0.7])
-    f.colorbar(im, cax=cbar_ax)
+        f.subplots_adjust(right=0.8)
+        cbar_ax = f.add_axes([0.85, 0.15, 0.05, 0.7])
+        f.colorbar(im, cax=cbar_ax)
 
     plt.pause(0.001)
 
 
-def main(signame, N, xlim=(-10, 10), ylim=(-10, 10)):
-    print('Run for {}, N={}'.format(signame, N))
+def load_sig(signame, xlim=(-10, 10), ylim=(-10, 10)):
     x = np.linspace(xlim[0], xlim[1], NX)
     y = np.linspace(ylim[0], ylim[1], NY)
-
     X, Y = np.meshgrid(x, y)
     R = np.sqrt(X**2 + Y**2)
     R_off = np.sqrt((X - 3)**2 + (Y - 4)**2)
@@ -148,6 +145,12 @@ def main(signame, N, xlim=(-10, 10), ylim=(-10, 10)):
         sig = np.sin(R + 0.00001) / R + 0.00001
     else:
         raise Exception('Unkown signame: {}'.format(signame))
+    return sig, X, Y
+
+def main(signame, N):
+    print('Run for {}, N={}'.format(signame, N))
+
+    sig, X, Y = load_sig(signame)
 
     alpha, beta, gamma, delta, sig_fs = calc_2d_fs(X, Y, sig, N=N)
     plot_results(signame, X, Y, sig, sig_fs, N, alpha, beta, gamma, delta)
@@ -177,6 +180,24 @@ if __name__ == '__main__':
                 r = input('q to quit, c to cont: ')
                 if r == 'q':
                     break
+    elif runtype == 'save':
+        sig, X, Y = load_sig(signame)
+        dx, dy, dA, Lx, Ly = calc_domain_details(X, Y)
+        print(f'dx = {dx}, dy = {dy}, dA = {dA}, Lx = {Lx}, Ly = {Ly}')
+        sig.T.astype(np.float64).tofile('data/sig.bin')
+        X.T.astype(np.float64).tofile('data/X.bin')
+        Y.T.astype(np.float64).tofile('data/Y.bin')
+    elif runtype == 'plot_saved':
+        ff = FortranFile('data/sig_fs.bin')
+        sig_fs = []
+        while True:
+            try:
+                sig_fs.append(ff.read_reals(dtype=np.float64))
+            except:
+                break
+        sig_fs = np.array(sig_fs)
+        sig, X, Y = load_sig(signame)
+        plot_results(signame, X, Y, sig, sig_fs, N)
     else:
         raise Exception('Unkown runtype: {}'.format(runtype))
     plt.show()
