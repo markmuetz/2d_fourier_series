@@ -3,6 +3,7 @@
 Uses sines/cosines to calculate a given number of term of Fourier Series for any input signal. """
 import sys
 import subprocess as sp
+from timeit import default_timer as timer
 
 import numpy as np
 import pylab as plt
@@ -54,7 +55,7 @@ def calc_2d_fs(X, Y, sig, N):
     # Calculate components:
     # Calculate Fourier Series:
     for i in range(N):
-        print('{}/{}'.format(i + 1, N))
+        # print('{}/{}'.format(i + 1, N))
         for j in range(N):
 
             cnx = np.cos(2 * np.pi * i * X / Lx)
@@ -81,34 +82,33 @@ def calc_2d_fs(X, Y, sig, N):
     return alpha, beta, gamma, delta, sig_fs
                        
 
-def plot_results(signame, X, Y, sig, sig_fs, N, alpha=None, beta=None, gamma=None, delta=None):
+def plot_results(runtype, signame, X, Y, sig, sig_fs, N, alpha=None, beta=None, gamma=None, delta=None):
     extent = (np.min(X), np.max(X), np.min(Y), np.max(Y))
-    plt.figure(1)
+    plt.figure(f'{runtype}_1')
     plt.clf()
     plt.title('input signal: {}'.format(signame))
     plt.imshow(sig, extent=extent, interpolation='nearest')
     plt.colorbar()
     plt.pause(0.001)
 
-    plt.figure(2)
+    plt.figure(f'{runtype}_2')
     plt.clf()
     plt.title('fourier series ({} terms)'.format(N))
     plt.imshow(sig_fs, extent=extent, interpolation='nearest')
     plt.colorbar()
     plt.pause(0.001)
 
-    plt.figure(3)
+    plt.figure(f'{runtype}_3')
     plt.clf()
     plt.title('signal - fourier series ({} terms), RMSE: {:.5f}'.format(N, rmse(sig, sig_fs)))
     plt.imshow(sig - sig_fs, extent=extent, interpolation='nearest')
     plt.colorbar()
     plt.pause(0.001)
 
-
     if alpha is not None:
-        plt.figure(4)
+        plt.figure(f'{runtype}_4')
         plt.clf()
-        f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, sharex='col', sharey='row', num=4)
+        f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, sharex='col', sharey='row', num=f'{runtype}_4')
         # f.set_title('compontents')
         min_all = min(map(np.min, [alpha, beta, gamma, delta]))
         max_all = max(map(np.max, [alpha, beta, gamma, delta]))
@@ -160,15 +160,56 @@ def load_sig(signame, xlim=(-10, 10), ylim=(-10, 10)):
         raise Exception('Unkown signame: {}'.format(signame))
     return sig, X, Y
 
-def main(signame, N):
-    print('Run for {}, N={}'.format(signame, N))
+
+def run_python(signame, N):
+    print('Run python for {}, N={}'.format(signame, N))
+    start = timer()
 
     sig, X, Y = load_sig(signame)
 
     alpha, beta, gamma, delta, sig_fs = calc_2d_fs(X, Y, sig, N=N)
-    plot_results(signame, X, Y, sig, sig_fs, N, alpha, beta, gamma, delta)
-    return alpha, beta, gamma, delta, sig_fs
+    end = timer()
+    print(f'ran in {end - start}')
+    return X, Y, sig, alpha, beta, gamma, delta, sig_fs
 
+
+def run_fortran(signame, N):
+    print('Run fortran for {}, N={}'.format(signame, N))
+    start = timer()
+
+    sig, X, Y = load_sig(signame)
+    dx, dy, dA, Lx, Ly = calc_domain_details(X, Y)
+    # print(f'dx = {dx}, dy = {dy}, dA = {dA}, Lx = {Lx}, Ly = {Ly}')
+
+    # Write nml.
+    settings = f90nml.Namelist()
+    settings['NX'] = NX
+    settings['NY'] = NY
+    settings['N'] = N
+    settings['Lx'] = Lx
+    settings['Ly'] = Ly
+    nml = f90nml.Namelist()
+    nml['settings'] = settings
+    nml.write('data/settings.nml', force=True)
+
+    # Write arrays for fortran to use.
+    sig.T.astype(np.float64).tofile('data/sig.bin')
+    X.T.astype(np.float64).tofile('data/X.bin')
+    Y.T.astype(np.float64).tofile('data/Y.bin')
+
+    # Call fortran exe.
+    sp.check_output(['./fourier_series_2d'])
+
+    # Read in fortran arrays.
+    sig_fs = read_fortran_bin('data/sig_fs.bin')
+    alpha = read_fortran_bin('data/alpha.bin')
+    beta = read_fortran_bin('data/beta.bin')
+    gamma = read_fortran_bin('data/gamma.bin')
+    delta = read_fortran_bin('data/delta.bin')
+
+    end = timer()
+    print(f'ran in {end - start}')
+    return X, Y, sig, alpha, beta, gamma, delta, sig_fs
 
 if __name__ == '__main__':
     if len(sys.argv) != 4:
@@ -178,15 +219,16 @@ if __name__ == '__main__':
     runtype = sys.argv[1]
     signame = sys.argv[2]
     N = int(sys.argv[3])
-    if runtype == 'run':
-        alpha, beta, gamma, delta, sig_fs = main(signame, N)
+    if runtype == 'run_python':
+        X, Y, sig, alpha, beta, gamma, delta, sig_fs = run_python(signame, N)
+        plot_results('python', signame, X, Y, sig, sig_fs, N, alpha, beta, gamma, delta)
         # zero out low values:
         for arr in [alpha, beta, gamma, delta]:
             arr[np.abs(arr) < 1e-12] = 0
     elif runtype == 'run_to_N':
         r = ''
         for i in range(1, N):
-            alpha, beta, gamma, delta, sig_fs = main(signame, i)
+            alpha, beta, gamma, delta, sig_fs = run_python(signame, i)
             if r == 'c':
                 plt.pause(0.001)
             else:
@@ -194,43 +236,16 @@ if __name__ == '__main__':
                 if r == 'q':
                     break
     elif runtype == 'run_fortran':
-        sig, X, Y = load_sig(signame)
-        dx, dy, dA, Lx, Ly = calc_domain_details(X, Y)
-        print(f'dx = {dx}, dy = {dy}, dA = {dA}, Lx = {Lx}, Ly = {Ly}')
-        settings = f90nml.Namelist()
-        settings['NX'] = NX
-        settings['NY'] = NY
-        settings['N'] = N
-        settings['Lx'] = Lx
-        settings['Ly'] = Ly
-        nml = f90nml.Namelist()
-        nml['settings'] = settings
-
-        nml.write('data/settings.nml', force=True)
-        sig.T.astype(np.float64).tofile('data/sig.bin')
-        X.T.astype(np.float64).tofile('data/X.bin')
-        Y.T.astype(np.float64).tofile('data/Y.bin')
-
-        sp.check_output(['./fourier_series_2d'])
-
-        sig_fs = read_fortran_bin('data/sig_fs.bin')
-        alpha = read_fortran_bin('data/alpha.bin')
-        beta = read_fortran_bin('data/beta.bin')
-        gamma = read_fortran_bin('data/gamma.bin')
-        delta = read_fortran_bin('data/delta.bin')
-
-        sig, X, Y = load_sig(signame)
-        plot_results(signame, X, Y, sig, sig_fs, N, alpha, beta, gamma, delta)
-
-    elif runtype == 'plot_fortran':
-        sig_fs = read_fortran_bin('data/sig_fs.bin')
-        alpha = read_fortran_bin('data/alpha.bin')
-        beta = read_fortran_bin('data/beta.bin')
-        gamma = read_fortran_bin('data/gamma.bin')
-        delta = read_fortran_bin('data/delta.bin')
-
-        sig, X, Y = load_sig(signame)
-        plot_results(signame, X, Y, sig, sig_fs, N, alpha, beta, gamma, delta)
+        X, Y, sig, alpha, beta, gamma, delta, sig_fs = run_fortran(signame, N)
+        plot_results('fortran', signame, X, Y, sig, sig_fs, N, alpha, beta, gamma, delta)
+    elif runtype == 'compare':
+        X, Y, sig, alpha, beta, gamma, delta, sig_fs = run_python(signame, N)
+        X, Y, sig, alpha2, beta2, gamma2, delta2, sig_fs2 = run_fortran(signame, N)
+        print(f'rmse sig_fs: {rmse(sig_fs, sig_fs2)}')
+        print(f'rmse alpha: {rmse(alpha, alpha2)}')
+        print(f'rmse beta: {rmse(beta, beta2)}')
+        print(f'rmse gamma: {rmse(gamma, gamma2)}')
+        print(f'rmse delta: {rmse(delta, delta2)}')
     else:
         raise Exception('Unkown runtype: {}'.format(runtype))
     plt.show()
