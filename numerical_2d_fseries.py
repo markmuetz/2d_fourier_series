@@ -45,8 +45,8 @@ def calc_2d_fs(X, Y, sig, N):
         for j in range(N):
 
             snx = np.sin(2 * np.pi * i * X / Lx)
-            sny = np.sin(2 * np.pi * i * Y / Ly)
-            cnx = np.cos(2 * np.pi * j * X / Lx)
+            sny = np.sin(2 * np.pi * j * Y / Ly)
+            cnx = np.cos(2 * np.pi * i * X / Lx)
             cny = np.cos(2 * np.pi * j * Y / Ly)
 
             if i == 0 and j == 0:
