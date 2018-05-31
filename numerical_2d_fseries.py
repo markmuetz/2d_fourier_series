@@ -11,8 +11,8 @@ from scipy.io import FortranFile
 
 import f90nml
 
-NX = 1000
-NY = 1000
+NX = 512
+NY = 512
 
 
 def read_fortran_bin(fname):

@@ -92,6 +92,7 @@ program main
 
   integer :: nx, ny, N
   double precision :: Lx, Ly
+  logical, parameter :: use_fast_method=.True.
 
   double precision, allocatable :: sig(:, :), sig_fs(:, :)
   double precision, allocatable :: X(:, :), Y(:, :)
@@ -151,35 +152,7 @@ program main
   !call print_array(X, nx, ny)
   !call print_array(Y, nx, ny)
 
-  if (.FALSE.) then
-    sig_fs = 0
-    do i=1, N
-      do j=1, N
-        cnxx = cos(2 * pi * (i - 1) * X / Lx)
-        snxx = sin(2 * pi * (i - 1) * X / Lx)
-        cnyy = cos(2 * pi * (j - 1) * Y / Ly)
-        snyy = sin(2 * pi * (j - 1) * Y / Ly)
-
-        if ((i - 1) == 0 .and. (j - 1) == 0) then
-          kappa = 1
-        else if ((i - 1) == 0 .or. (j - 1) == 0) then
-          kappa = 2
-        else
-          kappa = 4
-        end if
-
-        alpha(i, j) = sum(kappa * sig * cnxx * cnyy) * dA / (Lx * Ly)
-        beta(i, j)  = sum(kappa * sig * cnxx * snyy) * dA / (Lx * Ly)
-        gamma(i, j) = sum(kappa * sig * snxx * cnyy) * dA / (Lx * Ly)
-        delta(i, j) = sum(kappa * sig * snxx * snyy) * dA / (Lx * Ly)
-
-        sig_fs = sig_fs + alpha(i, j) * cnxx * cnyy
-        sig_fs = sig_fs + beta(i, j)  * cnxx * snyy
-        sig_fs = sig_fs + gamma(i, j) * snxx * cnyy
-        sig_fs = sig_fs + delta(i, j) * snxx * snyy
-      end do
-    end do
-  else
+  if (use_fast_method) then
     sig_fs = 0
     do i=1, N
       do j=1, N
@@ -245,6 +218,34 @@ program main
                                         + delta_tmp * snx(k) * sny(l)
           end do
         end do
+      end do
+    end do
+  else
+    sig_fs = 0
+    do i=1, N
+      do j=1, N
+        cnxx = cos(2 * pi * (i - 1) * X / Lx)
+        snxx = sin(2 * pi * (i - 1) * X / Lx)
+        cnyy = cos(2 * pi * (j - 1) * Y / Ly)
+        snyy = sin(2 * pi * (j - 1) * Y / Ly)
+
+        if ((i - 1) == 0 .and. (j - 1) == 0) then
+          kappa = 1
+        else if ((i - 1) == 0 .or. (j - 1) == 0) then
+          kappa = 2
+        else
+          kappa = 4
+        end if
+
+        alpha(i, j) = sum(kappa * sig * cnxx * cnyy) * dA / (Lx * Ly)
+        beta(i, j)  = sum(kappa * sig * cnxx * snyy) * dA / (Lx * Ly)
+        gamma(i, j) = sum(kappa * sig * snxx * cnyy) * dA / (Lx * Ly)
+        delta(i, j) = sum(kappa * sig * snxx * snyy) * dA / (Lx * Ly)
+
+        sig_fs = sig_fs + alpha(i, j) * cnxx * cnyy
+        sig_fs = sig_fs + beta(i, j)  * cnxx * snyy
+        sig_fs = sig_fs + gamma(i, j) * snxx * cnyy
+        sig_fs = sig_fs + delta(i, j) * snxx * snyy
       end do
     end do
   end if
