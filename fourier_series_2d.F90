@@ -5,7 +5,7 @@ module constants
   double precision, parameter :: e = 2.7182818285 
 end module constants 
 
-subroutine print_arr(a, nx, ny)
+subroutine print_array(a, nx, ny)
   implicit none
   integer, intent(in) :: nx, ny
   double precision, intent(in) :: a(nx, ny)
@@ -21,7 +21,7 @@ subroutine print_arr(a, nx, ny)
   end do
   write(*,*) "===================="
 
-end subroutine print_arr
+end subroutine print_array
 
 subroutine read_arrays(nx, ny, fname, sig, X, Y)
   implicit none
@@ -95,11 +95,13 @@ program main
 
   double precision, allocatable :: sig(:, :), sig_fs(:, :)
   double precision, allocatable :: X(:, :), Y(:, :)
-  double precision, allocatable :: snx(:, :), cnx(:, :), sny(:, :), cny(:, :)
+  double precision, allocatable :: snxx(:, :), cnxx(:, :), snyy(:, :), cnyy(:, :)
+  double precision, allocatable :: snx(:), cnx(:), sny(:), cny(:)
   double precision, allocatable :: alpha(:, :), beta(:, :), gamma(:, :), delta(:, :)
+  double precision :: alpha_tmp, beta_tmp, gamma_tmp, delta_tmp
 
   double precision :: kappa
-  integer :: i, j
+  integer :: i, j, k, l
   double precision :: dA
 
   namelist /settings/ nx, ny, N, Lx, Ly
@@ -113,10 +115,15 @@ program main
   allocate(sig_fs(nx, ny))
   allocate(X(nx, ny))
   allocate(Y(nx, ny))
-  allocate(snx(nx, ny))
-  allocate(cnx(nx, ny))
-  allocate(sny(nx, ny))
-  allocate(cny(nx, ny))
+  allocate(snxx(nx, ny))
+  allocate(cnxx(nx, ny))
+  allocate(snyy(nx, ny))
+  allocate(cnyy(nx, ny))
+
+  allocate(snx(nx))
+  allocate(cnx(nx))
+  allocate(sny(ny))
+  allocate(cny(ny))
 
   allocate(alpha(N, N))
   allocate(beta(N, N))
@@ -134,43 +141,119 @@ program main
   ! Sanity check. Rem. fortran using 1 based indexing.
   write(*,'(10F10.8)') sig(6, 6)
 
-  !call print_arr(sig, nx, ny)
-  !call print_arr(X, nx, ny)
-  !call print_arr(Y, nx, ny)
+  !call print_array(sig, nx, ny)
+  !write(*,*) "column: ", sig(:, 1)
+  !write(*,*) "row   : ", sig(1, :)
+  !write(*,*) "X(1, :): ", X(1, :)
+  !write(*,*) "Y(:, 1): ", Y(:, 1)
 
-  sig_fs = 0
-  do i=1, N
-    do j=1, N
-      cnx = cos(2 * pi * (i - 1) * X / Lx)
-      snx = sin(2 * pi * (i - 1) * X / Lx)
-      cny = cos(2 * pi * (j - 1) * Y / Ly)
-      sny = sin(2 * pi * (j - 1) * Y / Ly)
+  !call print_array(sig, nx, ny)
+  !call print_array(X, nx, ny)
+  !call print_array(Y, nx, ny)
 
-      if ((i - 1) == 0 .and. (j - 1) == 0) then
-        kappa = 1
-      else if ((i - 1) == 0 .or. (j - 1) == 0) then
-        kappa = 2
-      else
-        kappa = 4
-      end if
+  if (.FALSE.) then
+    sig_fs = 0
+    do i=1, N
+      do j=1, N
+        cnxx = cos(2 * pi * (i - 1) * X / Lx)
+        snxx = sin(2 * pi * (i - 1) * X / Lx)
+        cnyy = cos(2 * pi * (j - 1) * Y / Ly)
+        snyy = sin(2 * pi * (j - 1) * Y / Ly)
 
-      alpha(i, j) = sum(kappa * sig * cnx * cny) * dA / (Lx * Ly)
-      beta(i, j)  = sum(kappa * sig * cnx * sny) * dA / (Lx * Ly)
-      gamma(i, j) = sum(kappa * sig * snx * cny) * dA / (Lx * Ly)
-      delta(i, j) = sum(kappa * sig * snx * sny) * dA / (Lx * Ly)
+        if ((i - 1) == 0 .and. (j - 1) == 0) then
+          kappa = 1
+        else if ((i - 1) == 0 .or. (j - 1) == 0) then
+          kappa = 2
+        else
+          kappa = 4
+        end if
 
-      sig_fs = sig_fs + alpha(i, j) * cnx * cny
-      sig_fs = sig_fs + beta(i, j)  * cnx * sny
-      sig_fs = sig_fs + gamma(i, j) * snx * cny
-      sig_fs = sig_fs + delta(i, j) * snx * sny
+        alpha(i, j) = sum(kappa * sig * cnxx * cnyy) * dA / (Lx * Ly)
+        beta(i, j)  = sum(kappa * sig * cnxx * snyy) * dA / (Lx * Ly)
+        gamma(i, j) = sum(kappa * sig * snxx * cnyy) * dA / (Lx * Ly)
+        delta(i, j) = sum(kappa * sig * snxx * snyy) * dA / (Lx * Ly)
+
+        sig_fs = sig_fs + alpha(i, j) * cnxx * cnyy
+        sig_fs = sig_fs + beta(i, j)  * cnxx * snyy
+        sig_fs = sig_fs + gamma(i, j) * snxx * cnyy
+        sig_fs = sig_fs + delta(i, j) * snxx * snyy
+      end do
     end do
-  end do
+  else
+    sig_fs = 0
+    do i=1, N
+      do j=1, N
+        do k=1, nx
+          cnx(k) = cos(2 * pi * (i - 1) * X(1, k) / Lx)
+          snx(k) = sin(2 * pi * (i - 1) * X(1, k) / Lx)
+        end do
 
-  !call print_arr(alpha, N, N)
-  !call print_arr(beta, N, N)
-  !call print_arr(gamma, N, N)
-  !call print_arr(delta, N, N)
-  !call print_arr(sig_fs, nx, ny)
+        do l=1, ny
+          cny(l) = cos(2 * pi * (j - 1) * Y(l, 1) / Ly)
+          sny(l) = sin(2 * pi * (j - 1) * Y(l, 1) / Ly)
+        end do
+
+        if ((i - 1) == 0 .and. (j - 1) == 0) then
+          kappa = 1
+        else if ((i - 1) == 0 .or. (j - 1) == 0) then
+          kappa = 2
+        else
+          kappa = 4
+        end if
+
+        alpha_tmp = 0
+        do k=1, nx
+          do l=1, ny
+            alpha_tmp = alpha_tmp + sig(l, k) * cnx(k) * cny(l)
+          end do
+        end do
+        alpha_tmp = kappa * alpha_tmp * dA / (Lx * Ly)
+        alpha(i, j) = alpha_tmp
+
+        beta_tmp = 0
+        do k=1, nx
+          do l=1, ny
+            beta_tmp = beta_tmp + sig(l, k) * cnx(k) * sny(l)
+          end do
+        end do
+        beta_tmp = kappa * beta_tmp * dA / (Lx * Ly)
+        beta(i, j) = beta_tmp
+
+        gamma_tmp = 0
+        do k=1, nx
+          do l=1, ny
+            gamma_tmp = gamma_tmp + sig(l, k) * snx(k) * cny(l)
+          end do
+        end do
+        gamma_tmp = kappa * gamma_tmp * dA / (Lx * Ly)
+        gamma(i, j) = gamma_tmp
+
+        delta_tmp = 0
+        do k=1, nx
+          do l=1, ny
+            delta_tmp = delta_tmp + sig(l, k) * snx(k) * sny(l)
+          end do
+        end do
+        delta_tmp = kappa * delta_tmp * dA / (Lx * Ly)
+        delta(i, j) = delta_tmp
+
+        do k=1, nx
+          do l=1, ny
+            sig_fs(l, k) = sig_fs(l, k) + alpha_tmp * cnx(k) * cny(l) &
+                                        + beta_tmp  * cnx(k) * sny(l) &
+                                        + gamma_tmp * snx(k) * cny(l) &
+                                        + delta_tmp * snx(k) * sny(l)
+          end do
+        end do
+      end do
+    end do
+  end if
+
+  !call print_array(alpha, N, N)
+  !call print_array(beta, N, N)
+  !call print_array(gamma, N, N)
+  !call print_array(delta, N, N)
+  !call print_array(sig_fs, nx, ny)
 
   call write_arrays(nx, ny, N, sig_fs, alpha, beta, gamma, delta)
 
