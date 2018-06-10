@@ -1,4 +1,5 @@
-CC = gfortran 
+# CC = gfortran 
+CC = ifort 
 
 all: fourier_series_2d
 

@@ -11,10 +11,6 @@ from scipy.io import FortranFile
 
 import f90nml
 
-NX = 512
-NY = 512
-
-
 def read_fortran_bin(fname):
     ff = FortranFile(fname)
     data = []
@@ -105,8 +101,8 @@ def plot_results(runtype, signame, x, y, sig, sig_fs, N,
 
     plt.figure(f'{runtype}_3')
     plt.clf()
-    plt.title('signal - fourier series ({} terms), RMSE: {:.5f}'.format(N, rmse(sig, sig_fs)))
-    plt.imshow(sig - sig_fs, extent=extent, interpolation='nearest')
+    plt.title('signal - fourier series ({} terms), RMSE: {:.5f}'.format(N, rmse(sig, sig_fs.T)))
+    plt.imshow(sig - sig_fs.T, extent=extent, interpolation='nearest')
     plt.colorbar()
     plt.pause(0.001)
 
@@ -137,9 +133,9 @@ def plot_results(runtype, signame, x, y, sig, sig_fs, N,
     plt.pause(0.001)
 
 
-def load_sig(signame, xlim=(-10, 10), ylim=(-10, 10)):
-    x = np.linspace(xlim[0], xlim[1], NX)
-    y = np.linspace(ylim[0], ylim[1], NY)
+def load_sig(signame, nx, ny, xlim=(-10, 10), ylim=(-10, 10)):
+    x = np.linspace(xlim[0], xlim[1], nx)
+    y = np.linspace(ylim[0], ylim[1], ny)
     X, Y = np.meshgrid(x, y)
     R = np.sqrt(X**2 + Y**2)
     R_off = np.sqrt((X - 3)**2 + (Y - 4)**2)
@@ -166,11 +162,11 @@ def load_sig(signame, xlim=(-10, 10), ylim=(-10, 10)):
     return sig, x, y, X, Y
 
 
-def run_python(signame, N):
-    print('Run python for {}, N={}'.format(signame, N))
+def run_python(signame, N, nx, ny):
+    print(f'Run python for {signame}, N={N}, nx={nx}, ny={ny}')
     start = timer()
 
-    sig, x, y, X, Y = load_sig(signame)
+    sig, x, y, X, Y = load_sig(signame, nx, ny)
 
     alpha, beta, gamma, delta, sig_fs = calc_2d_fs(x, y, sig, N=N)
     end = timer()
@@ -178,18 +174,18 @@ def run_python(signame, N):
     return x, y, sig, alpha, beta, gamma, delta, sig_fs
 
 
-def run_fortran(signame, N):
-    print('Run fortran for {}, N={}'.format(signame, N))
+def run_fortran(signame, N, nx, ny):
+    print(f'Run fortran for {signame}, N={N}, nx={nx}, ny={ny}')
     start = timer()
 
-    sig, x, y, X, Y = load_sig(signame)
+    sig, x, y, X, Y = load_sig(signame, nx, ny)
     dx, dy, dA, Lx, Ly = calc_domain_details(x, y)
     # print(f'dx = {dx}, dy = {dy}, dA = {dA}, Lx = {Lx}, Ly = {Ly}')
 
     # Write nml.
     settings = f90nml.Namelist()
-    settings['NX'] = NX
-    settings['NY'] = NY
+    settings['NX'] = nx
+    settings['NY'] = ny
     settings['N'] = N
     settings['Lx'] = Lx
     settings['Ly'] = Ly
@@ -218,15 +214,23 @@ def run_fortran(signame, N):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 4:
-        print('Usage: python {} <runtype> <signame> <n_terms>'.format(sys.argv[0]))
+    if len(sys.argv) < 4:
+        print('Usage: python {} <runtype> <signame> <n_terms> (<nx> <ny>)'.format(sys.argv[0]))
         sys.exit(1)
 
     runtype = sys.argv[1]
     signame = sys.argv[2]
     N = int(sys.argv[3])
+
+    if len(sys.argv) > 4:
+        nx = int(sys.argv[4])
+        ny = int(sys.argv[5])
+    else:
+        nx = 512
+        ny = 512
+
     if runtype == 'run_python':
-        x, y, sig, alpha, beta, gamma, delta, sig_fs = run_python(signame, N)
+        x, y, sig, alpha, beta, gamma, delta, sig_fs = run_python(signame, N, nx, ny)
         plot_results('python', signame, x, y, sig, sig_fs, N, alpha, beta, gamma, delta)
         # zero out low values:
         for arr in [alpha, beta, gamma, delta]:
@@ -234,7 +238,7 @@ if __name__ == '__main__':
     elif runtype == 'run_to_N':
         r = ''
         for i in range(1, N):
-            alpha, beta, gamma, delta, sig_fs = run_python(signame, i)
+            alpha, beta, gamma, delta, sig_fs = run_python(signame, i, nx, ny)
             if r == 'c':
                 plt.pause(0.001)
             else:
@@ -242,10 +246,10 @@ if __name__ == '__main__':
                 if r == 'q':
                     break
     elif runtype == 'run_fortran':
-        x, y, sig, alpha, beta, gamma, delta, sig_fs = run_fortran(signame, N)
+        x, y, sig, alpha, beta, gamma, delta, sig_fs = run_fortran(signame, N, nx, ny)
         plot_results('fortran', signame, x, y, sig, sig_fs, N, alpha, beta, gamma, delta)
     elif runtype == 'compare':
-        x, y, sig, alpha, beta, gamma, delta, sig_fs = run_python(signame, N)
+        x, y, sig, alpha, beta, gamma, delta, sig_fs = run_python(signame, N, nx, ny)
         x, y, sig, alpha2, beta2, gamma2, delta2, sig_fs2 = run_fortran(signame, N)
 
         print(f'rmse sig_fs: {rmse(sig_fs, sig_fs2)}')
